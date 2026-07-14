@@ -2,15 +2,18 @@ import { useEffect, useState } from 'react';
 import { trackerClient } from './network/TrackerClient';
 import { audioEngine } from './audio/AudioEngine';
 import { RoomList } from './components/RoomList';
+import { PianoKeyboard } from './components/PianoKeyboard';
 import { useStore } from './store/useStore';
+import { useKeyboard } from './hooks/useKeyboard';
 import './App.css';
 
 function App() {
   const { isConnected } = useStore();
   const [isAudioInitialized, setIsAudioInitialized] = useState(false);
 
+  useKeyboard();
+
   useEffect(() => {
-    // Подключаемся к трекеру при загрузке
     trackerClient.connect('http://localhost:5001/sync').catch(err => {
       console.error('Failed to connect:', err);
     });
@@ -25,8 +28,8 @@ function App() {
       audioEngine.init();
       setIsAudioInitialized(true);
     }
-    // Играем ноту C4 (MIDI 60)
-    audioEngine.playNote(audioEngine.midiToFrequency(60), 0.5);
+    audioEngine.noteOn(60, 100);
+    setTimeout(() => audioEngine.noteOff(60), 500);
   };
 
   return (
@@ -45,7 +48,8 @@ function App() {
         
         <div className="synth-controls">
           <h2>Synthesizer</h2>
-          <button className="play-button" onClick={handlePlayNote}>
+          <PianoKeyboard />
+          <button className="play-button" onClick={handlePlayNote} style={{ marginTop: '20px' }}>
             Play Note (C4)
           </button>
         </div>
