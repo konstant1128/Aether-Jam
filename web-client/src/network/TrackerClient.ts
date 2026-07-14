@@ -3,6 +3,9 @@ import { useStore } from '../store/useStore';
 
 class TrackerClient {
   private connection: signalR.HubConnection | null = null;
+  
+  private onSDPReceivedCallback: ((connectionId: string, sdp: string) => void) | null = null;
+  private onICEReceivedCallback: ((connectionId: string, candidate: string) => void) | null = null;
   private onPeerJoinedCallback: ((peer: any) => void) | null = null;
   private onPeerLeftCallback: ((connectionId: string) => void) | null = null;
   private onCurrentPeersCallback: ((peers: any[]) => void) | null = null;
@@ -12,6 +15,16 @@ class TrackerClient {
       .withUrl(url)
       .withAutomaticReconnect()
       .build();
+
+    this.connection.on('SDPReceived', (connectionId: string, sdp: string) => {
+      console.log('SDP received from:', connectionId);
+      this.onSDPReceivedCallback?.(connectionId, sdp);
+    });
+
+    this.connection.on('ICEReceived', (connectionId: string, candidate: string) => {
+      console.log('ICE received from:', connectionId);
+      this.onICEReceivedCallback?.(connectionId, candidate);
+    });
 
     this.connection.on('PeerJoined', (peer) => {
       console.log('Peer joined:', peer);
@@ -71,7 +84,27 @@ class TrackerClient {
     return rooms;
   }
 
+  //WebRTC Signaling методы
+  
+  async sendSDP(targetConnectionId: string, sdp: string) {
+    if (!this.connection) throw new Error('Not connected');
+    await this.connection.invoke('ExchangeSDP', targetConnectionId, sdp);
+  }
+
+  async sendICE(targetConnectionId: string, candidate: string) {
+    if (!this.connection) throw new Error('Not connected');
+    await this.connection.invoke('ExchangeICE', targetConnectionId, candidate);
+  }
+
   // Колбэки
+  onSDPReceived(callback: (connectionId: string, sdp: string) => void) {
+    this.onSDPReceivedCallback = callback;
+  }
+
+  onICEReceived(callback: (connectionId: string, candidate: string) => void) {
+    this.onICEReceivedCallback = callback;
+  }
+
   onPeerJoined(callback: (peer: any) => void) {
     this.onPeerJoinedCallback = callback;
   }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { trackerClient } from './network/TrackerClient';
+import { peerManager } from './network/PeerManager';
 import { audioEngine } from './audio/AudioEngine';
 import { RoomList } from './components/RoomList';
 import { PianoKeyboard } from './components/PianoKeyboard';
@@ -8,20 +9,30 @@ import { useKeyboard } from './hooks/useKeyboard';
 import './App.css';
 
 function App() {
-  const { isConnected } = useStore();
+  const { isConnected, currentRoom } = useStore();
   const [isAudioInitialized, setIsAudioInitialized] = useState(false);
 
   useKeyboard();
 
   useEffect(() => {
-    trackerClient.connect('http://localhost:5001/sync').catch(err => {
+    trackerClient.connect('http://localhost:5201/sync').catch(err => {
       console.error('Failed to connect:', err);
     });
 
     return () => {
       trackerClient.disconnect();
+      peerManager.cleanup();
     };
   }, []);
+
+  // Инициализируем PeerManager при входе в комнату
+  useEffect(() => {
+    if (currentRoom) {
+      peerManager.initialize(currentRoom.id);
+    } else {
+      peerManager.cleanup();
+    }
+  }, [currentRoom]);
 
   const handlePlayNote = () => {
     if (!isAudioInitialized) {
