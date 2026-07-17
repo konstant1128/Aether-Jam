@@ -1,0 +1,1 @@
+export type InstrumentType = 'synth' | 'lead' | 'pad' | 'pluck' | 'keys' | ''
