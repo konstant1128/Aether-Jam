@@ -1,79 +1,112 @@
+import { INSTRUMENT_PRESETS, type InstrumentName } from './Presets';
+import { drumMachine } from './DrumMAchine';
+
 interface ActiveVoice {
-  oscillator: OscillatorNode;
+  oscillator: OscillatorNode | AudioBufferSourceNode;
   gainNode: GainNode;
+  filter?: BiquadFilterNode;
+  preset: typeof INSTRUMENT_PRESETS.synth;
 }
 
 class AudioEngine {
   private audioContext: AudioContext | null = null;
   private masterGain: GainNode | null = null;
-  private activeVoices = new Map<number, ActiveVoice>(); // Храним активные ноты по MIDI-номеру
+  private activeVoices = new Map<number, ActiveVoice>();
+  private currentInstrument: InstrumentName = 'synth';
+  private drumsInitialized = false;
 
   init() {
     if (this.audioContext) return;
     
     this.audioContext = new AudioContext();
     this.masterGain = this.audioContext.createGain();
-    this.masterGain.gain.value = 0.3; 
+    this.masterGain.gain.value = 0.5;
     this.masterGain.connect(this.audioContext.destination);
+
+    // Инициализируем драм-машину
+    drumMachine.init(this.audioContext, this.masterGain);
+    this.initializeDrums();
   }
 
-  //нажатие клавиши
+  private async initializeDrums() {
+    if (this.drumsInitialized) return;
+    await drumMachine.loadSamples();
+    this.drumsInitialized = true;
+  }
+
+  setInstrument(instrument: InstrumentName) {
+    this.currentInstrument = instrument;
+    console.log('Instrument changed to:', instrument);
+  }
+
+  getCurrentInstrument(): InstrumentName {
+    return this.currentInstrument;
+  }
+
   noteOn(midiNote: number, velocity: number = 100) {
     if (!this.audioContext || !this.masterGain) this.init();
     if (this.audioContext!.state === 'suspended') this.audioContext!.resume();
 
-    //если нота уже играет, глушим её перед запуском новой
     this.noteOff(midiNote);
+
+    const preset = INSTRUMENT_PRESETS[this.currentInstrument];
+
+    // Если выбран инструмент drums, используем семплы
+    if (preset.type === 'drums') {
+      drumMachine.play(midiNote, velocity);
+      return;
+    }
 
     const ctx = this.audioContext!;
     const now = ctx.currentTime;
-    const frequency = this.midiToFrequency(midiNote);
-    const velocityGain = velocity / 127; // Нормализуем velocity от 0.0 до 1.0
+    const frequency = this.midiToFrequency(midiNote + preset.transpose);
+    const velocityGain = velocity / 127;
 
-    //осциллятор (пила)
+    // Осциллятор
     const oscillator = ctx.createOscillator();
-    oscillator.type = 'sawtooth';
+    oscillator.type = preset.oscillatorType;
     oscillator.frequency.value = frequency;
 
-    //огибающая (ADSR)
+    // Огибающая (ADSR)
     const envelope = ctx.createGain();
     envelope.gain.setValueAtTime(0, now);
-    envelope.gain.linearRampToValueAtTime(velocityGain, now + 0.01); // Attack: 10ms
-    envelope.gain.exponentialRampToValueAtTime(velocityGain * 0.6, now + 0.1); // Decay
+    envelope.gain.linearRampToValueAtTime(velocityGain * preset.volume, now + preset.attack);
+    envelope.gain.exponentialRampToValueAtTime(
+      velocityGain * preset.volume * preset.sustain, 
+      now + preset.attack + preset.decay
+    );
 
-    //фильтр (Low-Pass)
+    // Фильтр
     const filter = ctx.createBiquadFilter();
     filter.type = 'lowpass';
-    filter.frequency.value = 2000;
+    filter.frequency.value = preset.filterFrequency;
+    filter.Q.value = preset.filterResonance;
 
-    //соединяем
+    // Соединяем
     oscillator.connect(envelope);
     envelope.connect(filter);
     filter.connect(this.masterGain!);
 
     oscillator.start(now);
 
-    //сохраняем голос
-    this.activeVoices.set(midiNote, { oscillator, gainNode: envelope });
+    this.activeVoices.set(midiNote, { oscillator, gainNode: envelope, filter, preset });
   }
 
-  //отпускание клавиши
   noteOff(midiNote: number) {
     const voice = this.activeVoices.get(midiNote);
     if (!voice || !this.audioContext) return;
 
     const now = this.audioContext.currentTime;
-    const releaseTime = 0.3; // 300ms release
+    const releaseTime = voice.preset.release;
 
-    //плавно убираем громкость до 0
     voice.gainNode.gain.cancelScheduledValues(now);
     voice.gainNode.gain.setValueAtTime(voice.gainNode.gain.value, now);
     voice.gainNode.gain.exponentialRampToValueAtTime(0.001, now + releaseTime);
 
-    //останавливаем осциллятор после затухания
-    voice.oscillator.stop(now + releaseTime);
+    if (voice.oscillator.stop) {
+      voice.oscillator.stop(now + releaseTime);
+    }
     
-    //удаляем из активных
     this.activeVoices.delete(midiNote);
   }
 

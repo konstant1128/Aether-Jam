@@ -1,4 +1,3 @@
-// src/App.tsx
 import { useEffect, useState } from 'react';
 import { trackerClient } from './network/TrackerClient';
 import { peerManager } from './network/PeerManager';
@@ -6,6 +5,8 @@ import { audioEngine } from './audio/AudioEngine';
 import { RoomList } from './components/RoomList';
 import { PianoKeyboard } from './components/PianoKeyboard';
 import { Scene3D } from './components/Scene3D';
+import { InstrumentSelector } from './components/InstrumentSelector';
+import { DrumPads } from './components/DrumPads';
 import { useStore } from './store/useStore';
 import { useKeyboard } from './hooks/useKeyboard';
 import './App.css';
@@ -58,7 +59,13 @@ function App() {
       <main>
         <RoomList />
         
-        {currentRoom && <Scene3D />}
+        {currentRoom && (
+          <>
+            <Scene3D />
+            <InstrumentSelector />
+            {audioEngine.getCurrentInstrument() === 'drums' && <DrumPads />}
+          </>
+        )}
         
         <div className="synth-controls">
           <h2>Synthesizer</h2>
