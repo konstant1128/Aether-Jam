@@ -11,13 +11,17 @@ interface PeerConnection {
 class PeerManager {
   private peerConnections = new Map<string, PeerConnection>();
   private localRoomId: string | null = null;
-  private onParamChangeCallback: ((param: string, value: number) => void) | null = null;
+  private onInstrumentChangeCallback: ((connectionId: string, instrument: string) => void) | null = null;
 
-  // Конфигурация ICE серверов (STUN для обхода NAT)
   private iceServers = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
-      { urls: 'stun:stun1.l.google.com:19302' }
+      { urls: 'stun:stun1.l.google.com:19302' },
+      {
+        urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      }
     ]
   };
 
@@ -25,7 +29,6 @@ class PeerManager {
     this.localRoomId = roomId;
     console.log('PeerManager initialized for room:', roomId);
 
-    // Регистрируем колбэки на сигнальные сообщения
     trackerClient.onSDPReceived(async (connectionId, sdp) => {
       await this.handleSDP(connectionId, sdp);
     });
@@ -34,30 +37,26 @@ class PeerManager {
       await this.handleICE(connectionId, candidate);
     });
 
-    // Когда новый пир присоединяется — создаем для него соединение
     trackerClient.onPeerJoined(async (peer) => {
       await this.createPeerConnection(peer.connectionId);
     });
 
-    // Когда пир уходит — закрываем соединение
     trackerClient.onPeerLeft((connectionId) => {
       this.closePeerConnection(connectionId);
+      useStore.getState().removePeerInstrument(connectionId);
     });
 
-    // Подключаемся к уже существующим пирам
     const peers = useStore.getState().peers;
     for (const peer of peers) {
       await this.createPeerConnection(peer.connectionId);
     }
   }
 
-  // Создание P2P соединения с пиром
   private async createPeerConnection(remoteConnectionId: string) {
-    // Если соединение уже есть — не создаем дубликат
     if (this.peerConnections.has(remoteConnectionId)) return;
 
     const peerConnection = new RTCPeerConnection(this.iceServers);
-
+    
     const peerConn: PeerConnection = {
       connectionId: remoteConnectionId,
       peerConnection,
@@ -66,40 +65,32 @@ class PeerManager {
 
     this.peerConnections.set(remoteConnectionId, peerConn);
 
-    // Обработка ICE кандидатов
     peerConnection.onicecandidate = (event) => {
       if (event.candidate && this.localRoomId) {
         trackerClient.sendICE(remoteConnectionId, JSON.stringify(event.candidate));
       }
     };
 
-    // Когда получаем DataChannel от удаленного пира
     peerConnection.ondatachannel = (event) => {
       this.handleDataChannel(remoteConnectionId, event.channel);
     };
 
-    // Создаем DataChannel (только один пир должен создать, другой примет)
-    // Для простоты: кто присоединился позже — создает
     const dataChannel = peerConnection.createDataChannel('notes', {
-      ordered: true, // Надежная доставка для нот
+      ordered: true,
       maxRetransmits: 3
     });
 
     this.handleDataChannel(remoteConnectionId, dataChannel);
 
-    // Создаем SDP offer
     try {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-
-      // Отправляем offer через трекер
       await trackerClient.sendSDP(remoteConnectionId, JSON.stringify(offer));
     } catch (err) {
       console.error('Failed to create offer:', err);
     }
   }
 
-  // Обработка полученного SDP
   private async handleSDP(remoteConnectionId: string, sdpStr: string) {
     const peerConn = this.peerConnections.get(remoteConnectionId);
     if (!peerConn) return;
@@ -116,7 +107,6 @@ class PeerManager {
     }
   }
 
-  // Обработка ICE кандидата
   private async handleICE(remoteConnectionId: string, candidateStr: string) {
     const peerConn = this.peerConnections.get(remoteConnectionId);
     if (!peerConn) return;
@@ -125,7 +115,6 @@ class PeerManager {
     await peerConn.peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
   }
 
-  // Обработка DataChannel
   private handleDataChannel(remoteConnectionId: string, channel: RTCDataChannel) {
     const peerConn = this.peerConnections.get(remoteConnectionId);
     if (peerConn) {
@@ -145,11 +134,10 @@ class PeerManager {
     };
   }
 
-  // Обработка входящих сообщений (нот)
   private handleMessage(remoteConnectionId: string, data: string) {
     try {
       const message = JSON.parse(data);
-
+      
       if (message.type === 'note_on') {
         audioEngine.noteOn(message.note, message.velocity);
         useStore.getState().addActiveNote(message.note);
@@ -157,9 +145,15 @@ class PeerManager {
         audioEngine.noteOff(message.note);
         useStore.getState().removeActiveNote(message.note);
       } else if (message.type === 'param_change') {
-        // Применяем удаленный параметр
-        if (this.onParamChangeCallback) {
-          this.onParamChangeCallback(message.param, message.value);
+        console.log(`Param change from ${remoteConnectionId}: ${message.param} = ${message.value}`);
+        audioEngine.applyRemoteParam(message.param, message.value);
+      } else if (message.type === 'instrument_change') {
+        // ИСПРАВЛЕНО: используем remoteConnectionId для обновления store
+        console.log(`Instrument change from ${remoteConnectionId}: ${message.instrument}`);
+        useStore.getState().setPeerInstrument(remoteConnectionId, message.instrument);
+        
+        if (this.onInstrumentChangeCallback) {
+          this.onInstrumentChangeCallback(remoteConnectionId, message.instrument);
         }
       }
     } catch (err) {
@@ -167,26 +161,6 @@ class PeerManager {
     }
   }
 
-  broadcastParam(param: string, value: number) {
-    const message = JSON.stringify({
-      type: 'param_change',
-      param,
-      value
-    });
-
-    this.peerConnections.forEach((peerConn) => {
-      if (peerConn.dataChannel && peerConn.dataChannel.readyState === 'open') {
-        peerConn.dataChannel.send(message);
-      }
-    });
-  }
-
-  // Колбэк для получения параметров
-  onParamChange(callback: (param: string, value: number) => void) {
-    this.onParamChangeCallback = callback;
-  }
-
-  // Отправка ноты всем пирам
   broadcastNote(type: 'note_on' | 'note_off', note: number, velocity: number) {
     const message = JSON.stringify({ type, note, velocity });
 
@@ -197,7 +171,35 @@ class PeerManager {
     });
   }
 
-  // Закрытие соединения с пиром
+  broadcastParam(param: string, value: number) {
+    const message = JSON.stringify({ type: 'param_change', param, value });
+
+    this.peerConnections.forEach((peerConn) => {
+      if (peerConn.dataChannel && peerConn.dataChannel.readyState === 'open') {
+        peerConn.dataChannel.send(message);
+      }
+    });
+  }
+
+
+  broadcastInstrumentChange(instrument: string) {
+    const message = JSON.stringify({ type: 'instrument_change', instrument });
+
+    this.peerConnections.forEach((peerConn) => {
+      if (peerConn.dataChannel && peerConn.dataChannel.readyState === 'open') {
+        peerConn.dataChannel.send(message);
+      }
+    });
+  }
+
+  onParamChange(callback: (param: string, value: number) => void) {
+  }
+
+  // НОВЫЙ КОЛБЭК
+  onInstrumentChange(callback: (connectionId: string, instrument: string) => void) {
+    this.onInstrumentChangeCallback = callback;
+  }
+
   private closePeerConnection(connectionId: string) {
     const peerConn = this.peerConnections.get(connectionId);
     if (peerConn) {
@@ -207,7 +209,6 @@ class PeerManager {
     }
   }
 
-  // Очистка всех соединений
   cleanup() {
     this.peerConnections.forEach((peerConn) => {
       peerConn.dataChannel?.close();

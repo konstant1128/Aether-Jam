@@ -16,8 +16,10 @@ interface AppState {
   isConnected: boolean;
   currentRoom: Room | null;
   peers: Peer[];
-  
   activeNotes: Set<number>;
+  
+  //инструменты пиров (connectionId -> instrument)
+  peerInstruments: Record<string, string>;
   
   setConnected: (connected: boolean) => void;
   setCurrentRoom: (room: Room | null) => void;
@@ -27,6 +29,9 @@ interface AppState {
   setActiveNotes: (notes: Set<number>) => void;
   addActiveNote: (note: number) => void;
   removeActiveNote: (note: number) => void;
+  
+  setPeerInstrument: (connectionId: string, instrument: string) => void;
+  removePeerInstrument: (connectionId: string) => void;
 }
 
 export const useStore = create<AppState>((set) => ({
@@ -34,6 +39,7 @@ export const useStore = create<AppState>((set) => ({
   currentRoom: null,
   peers: [],
   activeNotes: new Set(),
+  peerInstruments: {},
   
   setConnected: (connected) => set({ isConnected: connected }),
   setCurrentRoom: (room) => set({ currentRoom: room }),
@@ -54,5 +60,15 @@ export const useStore = create<AppState>((set) => ({
     const newNotes = new Set(state.activeNotes);
     newNotes.delete(note);
     return { activeNotes: newNotes };
+  }),
+  
+  // Новые действия
+  setPeerInstrument: (connectionId, instrument) => set((state) => ({
+    peerInstruments: { ...state.peerInstruments, [connectionId]: instrument }
+  })),
+  removePeerInstrument: (connectionId) => set((state) => {
+    const newInstruments = { ...state.peerInstruments };
+    delete newInstruments[connectionId];
+    return { peerInstruments: newInstruments };
   }),
 }));

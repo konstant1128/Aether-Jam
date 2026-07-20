@@ -1,23 +1,33 @@
+import { useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { audioEngine } from '../audio/AudioEngine';
+import { peerManager } from '../network/PeerManager';
 import { INSTRUMENT_PRESETS, type InstrumentName } from '../audio/Presets';
 
 const INSTRUMENT_ICONS: Record<string, string> = {
-  synth: '',
-  bass: '',
-  lead: '',
-  pad: '',
-  pluck: '',
-  keys: '',
+  synth: '🎹',
+  bass: '🎸',
+  lead: '🎤',
+  pad: '🌊',
+  pluck: '🎻',
+  keys: '🎼',
   drums: ''
 };
 
 export function InstrumentSelector() {
-  const { peers } = useStore();
+  const { peers, setPeerInstrument } = useStore();
+
+  // Регистрируем колбэк для получения уведомлений об инструментах от других пиров
+  useEffect(() => {
+    peerManager.onInstrumentChange((connectionId, instrument) => {
+      setPeerInstrument(connectionId, instrument);
+      console.log(`Peer ${connectionId} changed instrument to ${instrument}`);
+    });
+  }, [setPeerInstrument]);
 
   const handleInstrumentChange = (instrument: InstrumentName) => {
     audioEngine.setInstrument(instrument);
-    //в будущем: отправить всем пирам информацию о смене инструмента
+    peerManager.broadcastInstrumentChange(instrument);
   };
 
   return (
@@ -35,6 +45,21 @@ export function InstrumentSelector() {
           </button>
         ))}
       </div>
+      
+      {/* Отображение инструментов других пиров */}
+      {peers.length > 0 && (
+        <div className="peer-instruments">
+          <h4>Peers:</h4>
+          {peers.map((peer) => (
+            <div key={peer.connectionId} className="peer-instrument-item">
+              <span>{peer.displayName}</span>
+              <span>
+                {INSTRUMENT_ICONS[peer.instrument] || '🎹'} {peer.instrument}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
