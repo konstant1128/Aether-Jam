@@ -13,18 +13,18 @@ export class DrumMachine {
   private isLoaded = false;
 
   private drumMapping: Record<number, { name: string; key: string; url: string }> = {
-    60: { name: 'Kick', key: 'C', url: '/samples/kick.wav' },
-    61: { name: 'Snare', key: 'C#', url: '/samples/snare.wav' },
-    62: { name: 'Hi-Hat Closed', key: 'D', url: '/samples/hihat_closed.wav' },
-    63: { name: 'Hi-Hat Open', key: 'D#', url: '/samples/hihat_open.wav' },
-    64: { name: 'Clap', key: 'E', url: '/samples/clap.wav' },
+    60: { name: 'Kick', key: 'A', url: '/samples/kick.wav' },
+    61: { name: 'Snare', key: 'W', url: '/samples/snare.wav' },
+    62: { name: 'Hi-Hat Closed', key: 'S', url: '/samples/hihat_closed.wav' },
+    63: { name: 'Hi-Hat Open', key: 'E', url: '/samples/hihat_open.wav' },
+    64: { name: 'Clap', key: 'D', url: '/samples/clap.wav' },
     65: { name: 'Tom Low', key: 'F', url: '/samples/tom_low.wav' },
-    66: { name: 'Tom Mid', key: 'F#', url: '/samples/tom_mid.wav' },
+    66: { name: 'Tom Mid', key: 'T', url: '/samples/tom_mid.wav' },
     67: { name: 'Tom High', key: 'G', url: '/samples/tom_high.wav' },
-    68: { name: 'Crash', key: 'G#', url: '/samples/crash.wav' },
-    69: { name: 'Ride', key: 'A', url: '/samples/ride.wav' },
-    70: { name: 'Percussion 1', key: 'A#', url: '/samples/perc1.wav' },
-    71: { name: 'Percussion 2', key: 'B', url: '/samples/perc2.wav' },
+    68: { name: 'Crash', key: 'Y', url: '/samples/crash.wav' },
+    69: { name: 'Ride', key: 'H', url: '/samples/ride.wav' },
+    70: { name: 'Percussion 1', key: 'U', url: '/samples/perc1.wav' },
+    71: { name: 'Percussion 2', key: 'J', url: '/samples/perc2.wav' },
   };
 
   init(audioContext: AudioContext, masterGain: GainNode) {

@@ -3,13 +3,13 @@ import { audioEngine } from '../audio/AudioEngine';
 import { INSTRUMENT_PRESETS, type InstrumentName } from '../audio/Presets';
 
 const INSTRUMENT_ICONS: Record<string, string> = {
-  synth: '🎹',
-  bass: '🎸',
-  lead: '🎤',
-  pad: '🌊',
-  pluck: '🎻',
-  keys: '🎼',
-  drums: '🥁'
+  synth: '',
+  bass: '',
+  lead: '',
+  pad: '',
+  pluck: '',
+  keys: '',
+  drums: ''
 };
 
 export function InstrumentSelector() {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { drumMachine } from "../audio/DrumMAchine";
+import { drumMachine } from "../audio/DrumMachine";
 import { useStore } from '../store/useStore';
 
 const PAD_COLORS = [

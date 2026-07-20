@@ -11,6 +11,7 @@ interface PeerConnection {
 class PeerManager {
   private peerConnections = new Map<string, PeerConnection>();
   private localRoomId: string | null = null;
+  private onParamChangeCallback: ((param: string, value: number) => void) | null = null;
 
   // Конфигурация ICE серверов (STUN для обхода NAT)
   private iceServers = {
@@ -56,7 +57,7 @@ class PeerManager {
     if (this.peerConnections.has(remoteConnectionId)) return;
 
     const peerConnection = new RTCPeerConnection(this.iceServers);
-    
+
     const peerConn: PeerConnection = {
       connectionId: remoteConnectionId,
       peerConnection,
@@ -90,7 +91,7 @@ class PeerManager {
     try {
       const offer = await peerConnection.createOffer();
       await peerConnection.setLocalDescription(offer);
-      
+
       // Отправляем offer через трекер
       await trackerClient.sendSDP(remoteConnectionId, JSON.stringify(offer));
     } catch (err) {
@@ -148,17 +149,41 @@ class PeerManager {
   private handleMessage(remoteConnectionId: string, data: string) {
     try {
       const message = JSON.parse(data);
-      
+
       if (message.type === 'note_on') {
         audioEngine.noteOn(message.note, message.velocity);
         useStore.getState().addActiveNote(message.note);
       } else if (message.type === 'note_off') {
         audioEngine.noteOff(message.note);
         useStore.getState().removeActiveNote(message.note);
+      } else if (message.type === 'param_change') {
+        // Применяем удаленный параметр
+        if (this.onParamChangeCallback) {
+          this.onParamChangeCallback(message.param, message.value);
+        }
       }
     } catch (err) {
       console.error('Failed to parse message:', err);
     }
+  }
+
+  broadcastParam(param: string, value: number) {
+    const message = JSON.stringify({
+      type: 'param_change',
+      param,
+      value
+    });
+
+    this.peerConnections.forEach((peerConn) => {
+      if (peerConn.dataChannel && peerConn.dataChannel.readyState === 'open') {
+        peerConn.dataChannel.send(message);
+      }
+    });
+  }
+
+  // Колбэк для получения параметров
+  onParamChange(callback: (param: string, value: number) => void) {
+    this.onParamChangeCallback = callback;
   }
 
   // Отправка ноты всем пирам
