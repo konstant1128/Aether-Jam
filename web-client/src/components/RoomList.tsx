@@ -37,7 +37,8 @@ export function RoomList() {
     try {
       const room = await trackerClient.createRoom(newRoomName);
       const displayName = 'User_' + Math.random().toString(36).substr(2, 5);
-      await trackerClient.joinRoom(room.id, displayName, 'synth');
+      const instrument = audioEngine.getCurrentInstrument(); 
+      await trackerClient.joinRoom(room.id, displayName, instrument);
       
       useStore.getState().setCurrentRoom(room);
       setNewRoomName('');
