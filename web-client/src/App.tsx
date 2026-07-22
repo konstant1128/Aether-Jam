@@ -20,7 +20,9 @@ function App() {
   useKeyboard();
 
   useEffect(() => {
-    const trackerUrl = import.meta.env.VITE_TRACKER_URL || 'http://localhost:5201/sync';
+    const trackerUrl = import.meta.env.PROD  ? `${window.location.origin}/sync` : 'http://localhost:5201/sync';    
+
+trackerClient.connect(trackerUrl);
     trackerClient.connect(trackerUrl).catch(err => {
       console.error('Failed to connect:', err);
     });
