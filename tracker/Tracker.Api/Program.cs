@@ -6,11 +6,12 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddSignalR();
 builder.Services.AddSingleton<RoomManager>();
 
+// CORS - разрешаем все источники
 builder.Services.AddCors(options =>
 {
     options.AddDefaultPolicy(policy =>
     {
-        policy.SetIsOriginAllowed(_ => true) 
+        policy.SetIsOriginAllowed(_ => true)
               .AllowAnyHeader()
               .AllowAnyMethod()
               .AllowCredentials();
@@ -20,7 +21,14 @@ builder.Services.AddCors(options =>
 var app = builder.Build();
 
 app.UseCors();
+
+// Раздача статических файлов (фронтенд)
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.MapHub<SyncHub>("/sync");
-app.MapGet("/", () => "Aether Jam Tracker is running!");
+
+// Fallback для SPA роутинга
+app.MapFallbackToFile("index.html");
 
 app.Run();

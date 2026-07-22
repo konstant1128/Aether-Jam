@@ -1,3 +1,4 @@
+// src/network/PeerManager.ts
 import { trackerClient } from './TrackerClient';
 import { audioEngine } from '../audio/AudioEngine';
 import { useStore } from '../store/useStore';
@@ -11,14 +12,21 @@ interface PeerConnection {
 class PeerManager {
   private peerConnections = new Map<string, PeerConnection>();
   private localRoomId: string | null = null;
+  private onParamChangeCallback: ((param: string, value: number) => void) | null = null;
   private onInstrumentChangeCallback: ((connectionId: string, instrument: string) => void) | null = null;
 
-  private iceServers = {
+  // STUN + TURN серверы для работы через интернет
+  private iceServers: RTCConfiguration = {
     iceServers: [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
       {
         urls: 'turn:openrelay.metered.ca:80',
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+      },
+      {
+        urls: 'turn:openrelay.metered.ca:443',
         username: 'openrelayproject',
         credential: 'openrelayproject'
       }
@@ -29,23 +37,24 @@ class PeerManager {
     this.localRoomId = roomId;
     console.log('PeerManager initialized for room:', roomId);
 
-    trackerClient.onSDPReceived(async (connectionId, sdp) => {
+    trackerClient.onSDPReceived(async (connectionId: string, sdp: string) => {
       await this.handleSDP(connectionId, sdp);
     });
 
-    trackerClient.onICEReceived(async (connectionId, candidate) => {
+    trackerClient.onICEReceived(async (connectionId: string, candidate: string) => {
       await this.handleICE(connectionId, candidate);
     });
 
-    trackerClient.onPeerJoined(async (peer) => {
+    trackerClient.onPeerJoined(async (peer: any) => {
       await this.createPeerConnection(peer.connectionId);
     });
 
-    trackerClient.onPeerLeft((connectionId) => {
+    trackerClient.onPeerLeft((connectionId: string) => {
       this.closePeerConnection(connectionId);
       useStore.getState().removePeerInstrument(connectionId);
     });
 
+    // Подключаемся к уже существующим пирам
     const peers = useStore.getState().peers;
     for (const peer of peers) {
       await this.createPeerConnection(peer.connectionId);
@@ -56,7 +65,7 @@ class PeerManager {
     if (this.peerConnections.has(remoteConnectionId)) return;
 
     const peerConnection = new RTCPeerConnection(this.iceServers);
-    
+
     const peerConn: PeerConnection = {
       connectionId: remoteConnectionId,
       peerConnection,
@@ -75,6 +84,7 @@ class PeerManager {
       this.handleDataChannel(remoteConnectionId, event.channel);
     };
 
+    // Создаем DataChannel
     const dataChannel = peerConnection.createDataChannel('notes', {
       ordered: true,
       maxRetransmits: 3
@@ -134,7 +144,7 @@ class PeerManager {
     };
   }
 
-  private handleMessage(remoteConnectionId: string, data: string) {
+    private handleMessage(remoteConnectionId: string, data: string) {
     try {
       const message = JSON.parse(data);
       
@@ -147,11 +157,12 @@ class PeerManager {
       } else if (message.type === 'param_change') {
         console.log(`Param change from ${remoteConnectionId}: ${message.param} = ${message.value}`);
         audioEngine.applyRemoteParam(message.param, message.value);
+        if (this.onParamChangeCallback) {
+          this.onParamChangeCallback(message.param, message.value);
+        }
       } else if (message.type === 'instrument_change') {
-        // ИСПРАВЛЕНО: используем remoteConnectionId для обновления store
         console.log(`Instrument change from ${remoteConnectionId}: ${message.instrument}`);
         useStore.getState().setPeerInstrument(remoteConnectionId, message.instrument);
-        
         if (this.onInstrumentChangeCallback) {
           this.onInstrumentChangeCallback(remoteConnectionId, message.instrument);
         }
@@ -181,7 +192,6 @@ class PeerManager {
     });
   }
 
-
   broadcastInstrumentChange(instrument: string) {
     const message = JSON.stringify({ type: 'instrument_change', instrument });
 
@@ -192,13 +202,13 @@ class PeerManager {
     });
   }
 
-  onParamChange(callback: (param: string, value: number) => void) {
-  }
+onParamChange = (callback: (param: string, value: number) => void): void => {
+  this.onParamChangeCallback = callback;
+}
 
-  // НОВЫЙ КОЛБЭК
-  onInstrumentChange(callback: (connectionId: string, instrument: string) => void) {
-    this.onInstrumentChangeCallback = callback;
-  }
+onInstrumentChange = (callback: (connectionId: string, instrument: string) => void): void => {
+  this.onInstrumentChangeCallback = callback;
+}
 
   private closePeerConnection(connectionId: string) {
     const peerConn = this.peerConnections.get(connectionId);
@@ -215,6 +225,7 @@ class PeerManager {
       peerConn.peerConnection.close();
     });
     this.peerConnections.clear();
+    this.localRoomId = null;
   }
 }
 
